@@ -1,0 +1,207 @@
+package services
+
+import (
+	"backend-b7/models"
+	"backend-b7/pkg/utils"
+	"backend-b7/repositories"
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"math"
+	"sync"
+
+	"net/http"
+	"net/url"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+type meetService struct {
+	meetRepository repositories.MeetRepositoryInterface
+	ClientID       string
+	ClientSecret   string
+	AuthCode       string
+	RedirectURI    string
+	token          models.TokenResponse
+	mu             sync.Mutex
+}
+
+type MeetServiceInterface interface {
+	CreateMeet(meet *models.ZoomMeet) (res *models.Response, err error)
+	GetMeets(filter map[string][]string) (res *models.Response, err error)
+	GetMeetById(id string) (res *models.Response, err error)
+	UpdateMeet(meet *models.ZoomMeetUpdate) (res *models.Response, err error)
+	DeleteMeet(meet *models.ZoomMeetUpdate) (res *models.Response, err error)
+
+	RequestAccessToken(code string) (*models.TokenResponse, error)
+}
+
+func NewMeetService(meetRepository repositories.MeetRepositoryInterface, clientID, clientSecret, authCode, redirectURI string) MeetServiceInterface {
+	return &meetService{
+		meetRepository: meetRepository,
+		ClientID:       clientID,
+		ClientSecret:   clientSecret,
+		AuthCode:       authCode,
+		RedirectURI:    redirectURI,
+		token:          models.TokenResponse{},
+		mu:             sync.Mutex{},
+	}
+}
+
+func (u *meetService) CreateMeet(meet *models.ZoomMeet) (res *models.Response, err error) {
+	meet.ID = uuid.New().String()
+	meet.Status = models.StatusActive
+	err = u.meetRepository.CreateMeet(meet)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.Response{
+		Code:    http.StatusCreated,
+		Message: "Meet created successfully",
+	}, nil
+}
+
+func (u *meetService) GetMeets(filter map[string][]string) (res *models.Response, err error) {
+
+	pagination, search := utils.GeneratePaginationFromRequest(filter)
+	meets, count, err := u.meetRepository.GetMeets(pagination, search)
+	if err != nil {
+		return nil, err
+	}
+
+	if count == 0 {
+		return &models.Response{
+			Code:    http.StatusNotFound,
+			Message: http.StatusText(http.StatusNotFound),
+		}, nil
+	}
+
+	data := models.ListZoomMeet{
+		Page:      pagination.Page,
+		Limit:     pagination.Limit,
+		Total:     int(count),
+		TotalPage: int(math.Ceil(float64(count) / float64(pagination.Limit))),
+		ZoomMeets: meets,
+	}
+
+	return &models.Response{
+		Code:    http.StatusOK,
+		Message: "Meet list successfully",
+		Data:    data,
+	}, nil
+}
+
+func (u *meetService) GetMeetById(id string) (res *models.Response, err error) {
+
+	meet, err := u.meetRepository.GetMeetById(id)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return &models.Response{
+				Code:    http.StatusNotFound,
+				Message: "Meet not exist",
+			}, nil
+		}
+		return nil, err
+	}
+
+	return &models.Response{
+		Code:    http.StatusOK,
+		Message: "Meet get successfully",
+		Data:    meet,
+	}, nil
+}
+
+func (u *meetService) UpdateMeet(meet *models.ZoomMeetUpdate) (res *models.Response, err error) {
+	err = u.meetRepository.UpdateMeet(meet)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.Response{
+		Code:    http.StatusOK,
+		Message: "Meet updated successfully",
+	}, nil
+}
+
+func (u *meetService) DeleteMeet(meet *models.ZoomMeetUpdate) (res *models.Response, err error) {
+	err = u.meetRepository.DeleteMeet(meet)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.Response{
+		Code:    http.StatusOK,
+		Message: "Meet deleted successfully",
+	}, nil
+}
+
+func (u *meetService) setToken(token models.TokenResponse) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	u.token = models.TokenResponse{
+		AccessToken:  token.AccessToken,
+		TokenType:    token.TokenType,
+		ExpiresIn:    token.ExpiresIn,
+		Scope:        token.Scope,
+		RefreshToken: token.RefreshToken,
+	}
+}
+
+func (u *meetService) getToken() models.TokenResponse {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	return u.token
+}
+
+func (u *meetService) RequestAccessToken(code string) (*models.TokenResponse, error) {
+	// Prepare the request body
+	body := url.Values{}
+	body.Set("grant_type", "authorization_code")
+	body.Set("code", code)
+	body.Set("redirect_uri", u.RedirectURI)
+
+	// Create the HTTP request
+	req, err := http.NewRequest("POST", "https://zoom.us/oauth/token", bytes.NewBufferString(body.Encode()))
+	if err != nil {
+		return nil, err
+	}
+
+	// Set headers
+	authHeader := base64.StdEncoding.EncodeToString([]byte(u.ClientID + ":" + u.ClientSecret))
+	req.Header.Set("Authorization", "Basic "+authHeader)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Read the response
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the response
+	var tokenResponse models.TokenResponse
+	if err := json.Unmarshal(respBody, &tokenResponse); err != nil {
+		return nil, err
+	}
+
+	if tokenResponse.AccessToken == "" {
+		return nil, fmt.Errorf("no access token in response: %s", respBody)
+	}
+
+	u.setToken(tokenResponse)
+
+	return &tokenResponse, nil
+}
