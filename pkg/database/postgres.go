@@ -22,7 +22,7 @@ func InitGorm(ctx context.Context) (db *gorm.DB, err error) {
 			),
 		),
 		&gorm.Config{
-			Logger: logger.Default.LogMode(logger.Info),
+			Logger: logger.Default.LogMode(logger.Warn),
 		},
 	)
 	if err != nil {
