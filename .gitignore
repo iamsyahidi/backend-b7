@@ -1,1 +1,4 @@
 .env
+.vscode
+pg_data
+nginx
