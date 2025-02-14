@@ -6,6 +6,7 @@ import (
 	"backend-b7/pkg/logger"
 	"backend-b7/services"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -152,17 +153,21 @@ func (pc *meetController) DeleteMeet(c *gin.Context) {
 		return
 	}
 
-	var meetDelete models.ZoomMeetUpdate
-	if err := c.ShouldBindJSON(&meetDelete); err != nil {
-		middleware.Response(c, meetDelete, models.Response{
+	meetingID := c.Query("meeting_id")
+	if meetingID == "" {
+		middleware.Response(c, id, models.Response{
 			Code:    http.StatusBadRequest,
-			Message: err.Error(),
+			Message: http.StatusText(http.StatusBadRequest),
 			Data:    nil,
 		})
 		return
 	}
 
+	var meetDelete models.ZoomMeetUpdate
+
 	meetDelete.ID = id
+	zoomMeetingID, _ := strconv.ParseInt(meetingID, 10, 64)
+	meetDelete.MeetingID = zoomMeetingID
 	response, err := pc.meetService.DeleteMeet(&meetDelete)
 	if err != nil {
 		logger.Err(err.Error())
