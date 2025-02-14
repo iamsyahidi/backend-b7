@@ -249,7 +249,7 @@ func (u *meetService) createZoomMeeting(meet *models.ZoomMeet) (resp map[string]
 	}
 	reqBody, _ := json.Marshal(body)
 
-	respBody, respCode, err := utils.CallRESTAPIWithToken(uri, "POST", reqBody, u.getToken().AccessToken)
+	respBody, _, err := utils.CallRESTAPIWithToken(uri, "POST", reqBody, u.getToken().AccessToken)
 	if err != nil {
 		return nil, err
 	}
@@ -259,8 +259,10 @@ func (u *meetService) createZoomMeeting(meet *models.ZoomMeet) (resp map[string]
 		return nil, err
 	}
 
-	if respCode != 200 {
-		return nil, fmt.Errorf("failed to create meeting")
+	if code, ok := resp["code"]; ok {
+		if code != 200 {
+			return nil, fmt.Errorf("failed to create meeting")
+		}
 	}
 
 	return
@@ -300,7 +302,7 @@ func (u *meetService) deleteZoomMeeting(meet *models.ZoomMeetUpdate) (resp map[s
 	}
 
 	if respCode != http.StatusNoContent {
-		return nil, fmt.Errorf("failed to update meeting")
+		return nil, fmt.Errorf("failed to delete meeting")
 	}
 
 	return
