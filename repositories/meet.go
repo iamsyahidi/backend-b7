@@ -106,6 +106,7 @@ func (pr *meetRepository) UpdateMeet(meet *models.ZoomMeetUpdate) error {
 		Model(&models.ZoomMeet{ID: meet.ID}).
 		Updates(
 			map[string]interface{}{
+				"user_id":    meet.UserID,
 				"meeting_id": meet.MeetingID,
 				"topic":      meet.Topic,
 				"start_time": meet.StartTime,
