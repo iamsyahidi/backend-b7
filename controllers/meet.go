@@ -152,9 +152,17 @@ func (pc *meetController) DeleteMeet(c *gin.Context) {
 		return
 	}
 
-	meetDelete := models.ZoomMeetUpdate{
-		ID: id,
+	var meetDelete models.ZoomMeetUpdate
+	if err := c.ShouldBindJSON(&meetDelete); err != nil {
+		middleware.Response(c, meetDelete, models.Response{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+			Data:    nil,
+		})
+		return
 	}
+
+	meetDelete.ID = id
 	response, err := pc.meetService.DeleteMeet(&meetDelete)
 	if err != nil {
 		logger.Err(err.Error())
