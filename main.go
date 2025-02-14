@@ -39,10 +39,9 @@ func main() {
 		meetRepository,
 		os.Getenv("ZOOM_CLIENT_ID"),
 		os.Getenv("ZOOM_CLIENT_SECRET"),
-		os.Getenv("ZOOM_AUTH_CODE"),
 		os.Getenv("REDIRECT_URI"),
+		os.Getenv("ZOOM_BASE_API"),
 	)
-	meetService.RequestAccessToken(os.Getenv("ZOOM_AUTH_CODE"))
 
 	// Controllers
 	meetController := controllers.NewMeetController(meetService)

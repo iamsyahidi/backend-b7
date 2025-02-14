@@ -2,13 +2,15 @@ package services
 
 import (
 	"backend-b7/models"
+	"backend-b7/pkg/logger"
 	"backend-b7/pkg/utils"
 	"backend-b7/repositories"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"math"
 	"sync"
 
@@ -23,8 +25,8 @@ type meetService struct {
 	meetRepository repositories.MeetRepositoryInterface
 	ClientID       string
 	ClientSecret   string
-	AuthCode       string
 	RedirectURI    string
+	ZoomBaseAPI    string
 	token          models.TokenResponse
 	mu             sync.Mutex
 }
@@ -39,21 +41,29 @@ type MeetServiceInterface interface {
 	RequestAccessToken(code string) (*models.TokenResponse, error)
 }
 
-func NewMeetService(meetRepository repositories.MeetRepositoryInterface, clientID, clientSecret, authCode, redirectURI string) MeetServiceInterface {
+func NewMeetService(meetRepository repositories.MeetRepositoryInterface, clientID, clientSecret, redirectURI, zoomBaseAPI string) MeetServiceInterface {
 	return &meetService{
 		meetRepository: meetRepository,
 		ClientID:       clientID,
 		ClientSecret:   clientSecret,
-		AuthCode:       authCode,
 		RedirectURI:    redirectURI,
+		ZoomBaseAPI:    zoomBaseAPI,
 		token:          models.TokenResponse{},
 		mu:             sync.Mutex{},
 	}
 }
 
 func (u *meetService) CreateMeet(meet *models.ZoomMeet) (res *models.Response, err error) {
+
+	zoomMeet, err := u.createZoomMeeting(meet)
+	if err != nil {
+		return nil, err
+	}
+
 	meet.ID = uuid.New().String()
 	meet.Status = models.StatusActive
+	meet.MeetingID = int64(zoomMeet["id"].(float64))
+	meet.JoinURL = fmt.Sprintf("%v", zoomMeet["join_url"])
 	err = u.meetRepository.CreateMeet(meet)
 	if err != nil {
 		return nil, err
@@ -143,6 +153,7 @@ func (u *meetService) setToken(token models.TokenResponse) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
+	logger.Infof("Set token: %v", token.AccessToken)
 	u.token = models.TokenResponse{
 		AccessToken:  token.AccessToken,
 		TokenType:    token.TokenType,
@@ -186,7 +197,7 @@ func (u *meetService) RequestAccessToken(code string) (*models.TokenResponse, er
 	defer resp.Body.Close()
 
 	// Read the response
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -204,4 +215,30 @@ func (u *meetService) RequestAccessToken(code string) (*models.TokenResponse, er
 	u.setToken(tokenResponse)
 
 	return &tokenResponse, nil
+}
+
+func (u *meetService) createZoomMeeting(meet *models.ZoomMeet) (resp map[string]interface{}, err error) {
+
+	var uri = fmt.Sprintf("%s/users/%s/meetings", u.ZoomBaseAPI, meet.UserID)
+	log.Println("uri", uri)
+
+	body := map[string]interface{}{
+		"topic":      meet.Topic,
+		"type":       2,
+		"start_time": meet.StartTime,
+		"duration":   meet.Duration,
+	}
+	reqBody, _ := json.Marshal(body)
+
+	respBody, _, err := utils.CallRESTAPIWithToken(uri, "POST", reqBody, u.getToken().AccessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	resp = map[string]interface{}{}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, err
+	}
+
+	return
 }
