@@ -37,7 +37,7 @@ func (pr *meetRepository) GetMeets(pagination utils.Pagination, where map[string
 	var meets []models.ZoomMeetView
 
 	queryBuilder := pr.db.
-		Table("meets").Select("meets.*").
+		Table("meets").Select("*").
 		Where("meets.status <> ?", models.StatusDeleted)
 
 	if id, ok := where["id"]; ok && id != "" {
@@ -111,9 +111,9 @@ func (pr *meetRepository) UpdateMeet(meet *models.ZoomMeetUpdate) error {
 				"topic":      meet.Topic,
 				"start_time": meet.StartTime,
 				"duration":   meet.Duration,
-				"join_url":   meet.Status,
+				"join_url":   meet.JoinURL,
 				"status":     meet.Status,
-				"updated_at": gorm.Expr("now()"),
+				"updated_at": gorm.Expr("CURRENT_TIMESTAMP AT TIME ZONE 'UTC'"),
 			},
 		).Error
 }
@@ -124,7 +124,7 @@ func (pr *meetRepository) DeleteMeet(meet *models.ZoomMeetUpdate) (err error) {
 		Updates(
 			map[string]interface{}{
 				"status":     models.StatusDeleted.String(),
-				"updated_at": gorm.Expr("now()"),
+				"updated_at": gorm.Expr("CURRENT_TIMESTAMP AT TIME ZONE 'UTC'"),
 			},
 		).Error
 }
