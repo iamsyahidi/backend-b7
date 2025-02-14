@@ -42,6 +42,7 @@ func (pc *meetController) CreateMeet(c *gin.Context) {
 	}
 
 	meet := models.ZoomMeet{
+		UserID:    meetRegister.UserID,
 		Topic:     meetRegister.Topic,
 		StartTime: meetRegister.StartTime,
 		Duration:  meetRegister.Duration,
@@ -169,7 +170,7 @@ func (pc *meetController) DeleteMeet(c *gin.Context) {
 }
 
 func (pc *meetController) HandleRedirect(c *gin.Context) {
-	code := c.Param("code")
+	code := c.Query("code")
 	if code == "" {
 		middleware.Response(c, code, models.Response{
 			Code:    http.StatusBadRequest,
