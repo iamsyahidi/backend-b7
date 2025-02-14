@@ -149,6 +149,15 @@ func (u *meetService) UpdateMeet(meet *models.ZoomMeetUpdate) (res *models.Respo
 }
 
 func (u *meetService) DeleteMeet(meet *models.ZoomMeetUpdate) (res *models.Response, err error) {
+	if meet.Status == "" {
+		meet.Status = models.StatusDeleted
+	}
+
+	_, err = u.deleteZoomMeeting(meet)
+	if err != nil {
+		return nil, err
+	}
+
 	err = u.meetRepository.DeleteMeet(meet)
 	if err != nil {
 		return nil, err
@@ -270,6 +279,22 @@ func (u *meetService) updateZoomMeeting(meet *models.ZoomMeetUpdate) (resp map[s
 	reqBody, _ := json.Marshal(body)
 
 	_, respCode, err := utils.CallRESTAPIWithToken(uri, "PATCH", reqBody, u.getToken().AccessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	if respCode != http.StatusNoContent {
+		return nil, fmt.Errorf("failed to update meeting")
+	}
+
+	return
+}
+
+func (u *meetService) deleteZoomMeeting(meet *models.ZoomMeetUpdate) (resp map[string]interface{}, err error) {
+
+	var uri = fmt.Sprintf("%s/meetings/%v", u.ZoomBaseAPI, meet.MeetingID)
+
+	_, respCode, err := utils.CallRESTAPIWithToken(uri, "DELETE", nil, u.getToken().AccessToken)
 	if err != nil {
 		return nil, err
 	}
