@@ -29,7 +29,7 @@ func CallRESTAPI(url string, method string, body []byte) (respBody []byte, respH
 	return responseBody, resp.Header, nil
 }
 
-func CallRESTAPIWithToken(url string, method string, body []byte, token string) (respBody []byte, respHeader http.Header, err error) {
+func CallRESTAPIWithToken(url string, method string, body []byte, token string) (respBody []byte, respHeader int, err error) {
 	if body == nil {
 		body = []byte{}
 	}
@@ -53,5 +53,5 @@ func CallRESTAPIWithToken(url string, method string, body []byte, token string) 
 		return
 	}
 
-	return responseBody, resp.Header, nil
+	return responseBody, resp.StatusCode, nil
 }

@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"sync"
 
@@ -64,6 +63,7 @@ func (u *meetService) CreateMeet(meet *models.ZoomMeet) (res *models.Response, e
 	meet.Status = models.StatusActive
 	meet.MeetingID = int64(zoomMeet["id"].(float64))
 	meet.JoinURL = fmt.Sprintf("%v", zoomMeet["join_url"])
+	meet.StartTime = meet.StartTime.UTC()
 	err = u.meetRepository.CreateMeet(meet)
 	if err != nil {
 		return nil, err
@@ -126,6 +126,17 @@ func (u *meetService) GetMeetById(id string) (res *models.Response, err error) {
 }
 
 func (u *meetService) UpdateMeet(meet *models.ZoomMeetUpdate) (res *models.Response, err error) {
+
+	if meet.Status == "" {
+		meet.Status = models.StatusActive
+	}
+
+	_, err = u.updateZoomMeeting(meet)
+	if err != nil {
+		return nil, err
+	}
+
+	meet.StartTime = meet.StartTime.UTC()
 	err = u.meetRepository.UpdateMeet(meet)
 	if err != nil {
 		return nil, err
@@ -220,7 +231,6 @@ func (u *meetService) RequestAccessToken(code string) (*models.TokenResponse, er
 func (u *meetService) createZoomMeeting(meet *models.ZoomMeet) (resp map[string]interface{}, err error) {
 
 	var uri = fmt.Sprintf("%s/users/%s/meetings", u.ZoomBaseAPI, meet.UserID)
-	log.Println("uri", uri)
 
 	body := map[string]interface{}{
 		"topic":      meet.Topic,
@@ -230,7 +240,7 @@ func (u *meetService) createZoomMeeting(meet *models.ZoomMeet) (resp map[string]
 	}
 	reqBody, _ := json.Marshal(body)
 
-	respBody, _, err := utils.CallRESTAPIWithToken(uri, "POST", reqBody, u.getToken().AccessToken)
+	respBody, respCode, err := utils.CallRESTAPIWithToken(uri, "POST", reqBody, u.getToken().AccessToken)
 	if err != nil {
 		return nil, err
 	}
@@ -238,6 +248,34 @@ func (u *meetService) createZoomMeeting(meet *models.ZoomMeet) (resp map[string]
 	resp = map[string]interface{}{}
 	if err := json.Unmarshal(respBody, &resp); err != nil {
 		return nil, err
+	}
+
+	if respCode != 200 {
+		return nil, fmt.Errorf("failed to create meeting")
+	}
+
+	return
+}
+
+func (u *meetService) updateZoomMeeting(meet *models.ZoomMeetUpdate) (resp map[string]interface{}, err error) {
+
+	var uri = fmt.Sprintf("%s/meetings/%v", u.ZoomBaseAPI, meet.MeetingID)
+
+	body := map[string]interface{}{
+		"topic":      meet.Topic,
+		"type":       2,
+		"start_time": meet.StartTime,
+		"duration":   meet.Duration,
+	}
+	reqBody, _ := json.Marshal(body)
+
+	_, respCode, err := utils.CallRESTAPIWithToken(uri, "PATCH", reqBody, u.getToken().AccessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	if respCode != http.StatusNoContent {
+		return nil, fmt.Errorf("failed to update meeting")
 	}
 
 	return
